@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+
+#
+# Path options
+#
+
+sites_dir=/srv/www/
+sites_available_dir=/etc/nginx/sites-available
+sites_enabled_dir=/etc/nginx/sites-enabled
+service_dir=/etc/systemd/system
+git_dir=/srv/git
+
+#
+# Log <type> <msg>
+#
+
+log() {
+  printf "  \033[36m%10s\033[0m : \e[2m%s\e[22m\033[0m\n" $1 $2
+}
+
+#
+# Abort <msg>
+#
+
+abort() {
+  printf "\n  \033[31mError: $@\033[0m\n\n" && exit 1
+}
+
+#
+# Prompt for confirmation
+#
+
+yes_no() {
+  while true; do
+    read -r -p "Are you sure? [Y/n] " input
+    case $input in
+      [yY][eE][sS]|[yY]|"") return 0;;
+      [nN][oO]|[nN]) echo "Cancelled" && exit 1;;
+      *) echo "Try [Y/n]." ;;
+    esac
+  done
+}
+
+#
+# Output usage information
+#
+
+display_help() {
+  cat <<-EOF
+
+  Usage: site [command] <args>
+
+  Commands:
+    site | site help    Output this help information
+    site backup         Backup the given site(s)
+    site backup-all     Backup all sites
+    site delete         Backup and delete the given site(s)
+    site disable        Disable the given site(s)
+    site enable         Enable the given site(s)
+    site list           Output site list and status
+    site new            Setup the directories and Nginx configuration for the given site(s)
+    site permissions    Set owner www-data, directories 755 and files 644
+    site repo           Setup repo for Git deployment
+
+EOF
+}
+
+#
+# List sites in sites_available_dir
+#
+
+list_sites() {
+  for site in "$sites_available_dir"/*; do
+    current_site=`basename "$site"`
+    if [[ -f $sites_enabled_dir/$current_site ]]; then
+      log $current_site "Enabled"
+    else
+      log $current_site "Disabled"
+    fi
+  done
+}
+
+#
+# New <site_name>
+#
+
+new_site() {
+  check_root
+
+  mkdir -p $sites_dir/$1/{site,logs}
+  chown $USER:www-data $sites_dir/$1/{site}
+  chmod g+s $sites_dir/$1/site
+  touch $sites_available_dir/$1
+}
+
+#
+# Enable <site>
+#
+
+enable_site() {
+  check_root
+
+  ln -s $sites_available_dir/$1 $sites_enabled_dir/$1
+}
+
+#
+# Disable <site_name>
+#
+
+disable_site() {
+  check_root
+  yes_no
+
+  if [[ $? -ne 0 ]]; then
+    exit 1
+  fi
+
+  if test -f $sites_enabled_dir/$1; then
+    rm $sites_enabled_dir/$1
+  fi
+}
+
+#
+# Delete <site_name>
+#
+
+delete_site() {
+  check_root
+  yes_no
+
+  if [[ $? -ne 0 ]]; then
+    exit 1
+  fi
+
+  if test -d $sites_dir/$1; then
+    rm -r $sites_dir/$1
+    disable_site $1
+    rm $sites_available_dir/$1
+    if test -f $service_dir/$1; then
+      rm -r $service_dir/$1
+    fi
+  else
+    abort "Site does not exist."
+  fi
+}
+
+#
+# Backup <site_name>
+#
+
+backup_site() {
+  check_root
+
+  backup_date=$(date +%F)
+  tar -zcvf $sites_dir/$1/$BDATE-$1.tar.gz -P $sites_dir/$1
+}
+
+#
+# Backup all sites
+#
+
+backup_all_sites() {
+  check_root
+
+  for site in ${list_sites[@]}; do
+    backup_site $site
+  done
+}
+
+#
+# Repo <site_name>
+#
+
+git_repo() {
+  git init --bare $git_staging_dir/$1
+  touch $git_staging_dir/$1/hooks/post-receive
+  chmod a+x $git_staging_dir/$1/hooks/post-receive
+  echo "#!/bin/sh" > $git_staging_dir/$1/hooks/post-receive
+  echo "GIT_WORK_TREE=$sites_dir/$1/site git checkout -f master" >> $git_staging_dir/$1/hooks/post-receive
+}
+
+#
+# Set permissions <site_name>
+# Owner: www-data
+# Directories: 755
+# Files: 644
+#
+
+set_permissions() {
+  check_root
+
+  chown -R www-data:www-data $sites_dir/$1/site
+  find $sites_dir/$1/site -type d -exec chmod 755 {} \;
+  find $sites_dir/$1/site -type f -exec chmod 644 {} \;
+}
+
+#
+# Check root user
+#
+
+check_root() {
+  if test $(id -u) != 0; then
+    abort "Try running with sudo"
+  fi
+}
+
+#
+# Handle <args>
+#
+
+if test $# -eq 0; then
+  display_help
+
+else
+  while test $# -ne 0; do
+    case $1 in
+      backup) backup_site $2; exit ;;
+      backup-all) backup_all_sites; exit ;;
+      delete) delete_site $2; exit ;;
+      disable) disable_site $2; exit ;;
+      enable) enable_site $2; exit ;;
+      help) display_help ;;
+      list) list_sites; exit ;;
+      new) new_site $2; exit ;;
+      repo) git_repo $2; exit ;;
+    esac
+    shift
+  done
+fi
