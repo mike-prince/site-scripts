@@ -177,11 +177,11 @@ backup_all_sites() {
 
 git_repo() {
   mkdir $git_dir/$1.git
-  chown -R $(who | awk '{print $1}') $git_dir/$1.git
   chmod +s $git_dir/$1.git
   git init --bare $git_dir/$1.git
   touch $git_dir/$1.git/hooks/post-receive
   chmod 755 $git_dir/$1.git/hooks/post-receive
+  chown -R $(who | awk '{print $1}') $git_dir/$1.git
   echo '#!/bin/sh' | sudo tee --append $git_dir/$1.git/hooks/post-receive > /dev/null
   echo "GIT_WORK_TREE=$sites_dir/$1/site git checkout -f master" | sudo tee --append $git_dir/$1.git/hooks/post-receive > /dev/null
 }
