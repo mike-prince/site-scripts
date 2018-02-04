@@ -54,6 +54,7 @@ display_help() {
     site | site help    Output this help information
     site backup         Backup the given site(s)
     site backup-all     Backup all sites
+    site cert           Setup letsencrypt certificates
     site delete         Backup and delete the given site(s)
     site disable        Disable the given site(s)
     site enable         Enable the given site(s)
@@ -90,9 +91,10 @@ new_site() {
   check_root
 
   mkdir -p $sites_dir/$1/{site,logs}
-  chown $USER:www-data $sites_dir/$1/{site}
-  chmod g+s $sites_dir/$1/site
-  touch $sites_available_dir/$1
+  chown $USER:www-data $sites_dir/$1/site
+  chmod +s $sites_dir/$1/site
+  touch $sites_dir/$1/logs/$1_access.log
+  touch $sites_dir/$1/logs/$1_error.log
 }
 
 #
@@ -174,11 +176,12 @@ backup_all_sites() {
 #
 
 git_repo() {
-  git init --bare $git_staging_dir/$1
-  touch $git_staging_dir/$1/hooks/post-receive
-  chmod a+x $git_staging_dir/$1/hooks/post-receive
-  echo "#!/bin/sh" > $git_staging_dir/$1/hooks/post-receive
-  echo "GIT_WORK_TREE=$sites_dir/$1/site git checkout -f master" >> $git_staging_dir/$1/hooks/post-receive
+  mkdir $git_dir/$1
+  git init --bare $git_dir/$1
+  touch $git_dir/$1/hooks/post-receive
+  chmod 755 $git_dir/$1/hooks/post-receive
+  echo '#!/bin/sh' | sudo tee --append $git_dir/$1.git/hooks/post-receive > /dev/null
+  echo "GIT_WORK_TREE=$sites_dir/$1/site git checkout -f master" | sudo tee --append $git_dir/$1.git/hooks/post-receive > /dev/null
 }
 
 #
@@ -191,9 +194,15 @@ git_repo() {
 set_permissions() {
   check_root
 
-  chown -R www-data:www-data $sites_dir/$1/site
+  chown -R $USER:www-data $sites_dir/$1/site
   find $sites_dir/$1/site -type d -exec chmod 755 {} \;
   find $sites_dir/$1/site -type f -exec chmod 644 {} \;
+}
+
+ssl_certificates() {
+  check_root
+  certbot certonly --nginx -d FQDN -d www.FQDN
+  # certbot certonly --authenticator standalone --installer nginx --pre-hook "service nginx stop" --post-hook "service nginx start"
 }
 
 #
@@ -218,12 +227,14 @@ else
     case $1 in
       backup) backup_site $2; exit ;;
       backup-all) backup_all_sites; exit ;;
+      cert) ssl_certificates $2; exit ;;
       delete) delete_site $2; exit ;;
       disable) disable_site $2; exit ;;
       enable) enable_site $2; exit ;;
       help) display_help ;;
       list) list_sites; exit ;;
       new) new_site $2; exit ;;
+      permissions) set_permissions $2; exit ;;
       repo) git_repo $2; exit ;;
     esac
     shift
