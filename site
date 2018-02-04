@@ -91,7 +91,7 @@ new_site() {
   check_root
 
   mkdir -p $sites_dir/$1/{site,logs}
-  chown $USER:www-data $sites_dir/$1/site
+  chown -R $(who | awk '{print $1}'):www-data $sites_dir/$1/site
   chmod +s $sites_dir/$1/site
   touch $sites_dir/$1/logs/$1_access.log
   touch $sites_dir/$1/logs/$1_error.log
@@ -177,7 +177,7 @@ backup_all_sites() {
 
 git_repo() {
   mkdir $git_dir/$1.git
-  chown $USER $git_dir/$1.git
+  chown -R $(who | awk '{print $1}') $git_dir/$1.git
   chmod +s $git_dir/$1.git
   git init --bare $git_dir/$1.git
   touch $git_dir/$1.git/hooks/post-receive
