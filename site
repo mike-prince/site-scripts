@@ -15,7 +15,7 @@ git_dir=/srv/git
 #
 
 log() {
-  printf "  \033[36m%10s\033[0m : \e[2m%s\e[22m\033[0m\n" $1 $2
+  printf "\033[36m%s\033[0m \e[2m%s\e[22m\033[0m\n" $1 $2
 }
 
 #
@@ -23,7 +23,7 @@ log() {
 #
 
 abort() {
-  printf "\n  \033[31mError: $@\033[0m\n\n" && exit 1
+  printf "\n\033[31mError: $@\033[0m\n\n" && exit 1
 }
 
 #
@@ -70,6 +70,7 @@ EOF
 #
 
 list_sites() {
+  printf "\n"
   for site in "$sites_available_dir"/*; do
     current_site=`basename "$site"`
     if [[ -f $sites_enabled_dir/$current_site ]]; then
@@ -78,6 +79,7 @@ list_sites() {
       log $current_site "Disabled"
     fi
   done
+  printf "\n"
 }
 
 #
